@@ -16,13 +16,14 @@ class BlurredWindowBackground {
     /**
      * 創建一個 BlurredWindowBackground 實例。
      * @param {object} [options={}] - 配置選項。
-     * @param {number} [options.blurRadius=90] - 背景圖像的模糊半徑。
-     * @param {number} [options.titleBarHeight=0] - 窗口頂部標題欄或偏移的高度。
+     * @param {number} [options.borderRadius=15] - 背景的圓角半徑。
+     * @param {number} [options.blurRadius=90] - 背景圖像的模糊半徑，和CSS中的blur一致，採用px為單位，而不是sigma。
+     * @param {number} [options.titleBarHeight=0] - 窗口頂部標題欄或偏移的高度，不包括系統的標準標題欄，這裡是針對你自定義的不透明標題欄的設定，但強烈建議標題欄包含在背景範圍內，無論是否透明。
      * @param {number} [options.checkIntervalSuccess=1000] - 桌布檢查成功時的更新間隔 (毫秒)。
      * @param {number} [options.checkIntervalError=1000] - 桌布檢查失敗時的重試間隔 (毫秒)。
      * @param {string} [options.tempSubDir='nwjs_blur_temp_v2'] - 臨時子目錄名稱。
-     * @param {string} [options.blurredImageName='blurred_wallpaper.webp'] - 模糊圖像文件名。
-     * @param {number} [options.imageProcessingZipRate=0.25] - 圖像處理壓縮率。
+     * @param {string} [options.blurredImageName='blurred_wallpaper.webp'] - 模糊圖像檔名，臨時圖像檔案的名稱，通常無須修改。
+     * @param {number} [options.imageProcessingZipRate=0.25] - 圖像處理比例，範圍是0.01-1.00，越小處理速度越快，但同時畫面質量越低，建議模糊程度越高，壓縮比例越低。0.25就代表圖片將以1/4的大小參與模糊計算。
      * @param {string} [options.elementZIndex='0'] - 背景元素的 z-index。
      * @param {object} [options.dynamicOverlay] - 動態遮罩配置。
      * @param {boolean} [options.dynamicOverlay.enable=true] - 是否啟用動態透明度遮罩。
@@ -31,7 +32,7 @@ class BlurredWindowBackground {
      * @param {number} [options.dynamicOverlay.maxAlpha=0.75] - 最大透明度 (0.0 - 1.0)。
      * @param {number} [options.dynamicOverlay.brightnessThresholdLow=70] - 平均亮度的低閾值。
      * @param {number} [options.dynamicOverlay.brightnessThresholdHigh=180] - 平均亮度的高閾值。
-     * @param {boolean} [options.dynamicOverlay.invertAlphaBehavior=true] - 是否反轉透明度行為。
+     * @param {boolean} [options.dynamicOverlay.lightMode=true] - 遮罩色是否為淺色（即主體內容，比如文字等為深色）。
      */
     constructor(options = {}) {
         this.runtimeEnv = 'unknown';
@@ -61,6 +62,7 @@ class BlurredWindowBackground {
         }
 
         this.options = {
+            borderRadius: 15,
             blurRadius: 90,
             titleBarHeight: 0,
             checkIntervalSuccess: 1000,
@@ -76,7 +78,7 @@ class BlurredWindowBackground {
                 maxAlpha: 0.75,
                 brightnessThresholdLow: 70,
                 brightnessThresholdHigh: 180,
-                invertAlphaBehavior: true,
+                lightMode: true,
                 ...(options.dynamicOverlay || {})
             },
             ...options
@@ -124,7 +126,7 @@ class BlurredWindowBackground {
 
         if (this.options.dynamicOverlay.enable) {
             this._createOverlayElement();
-            const initialAlpha = this.options.dynamicOverlay.invertAlphaBehavior ? this.options.dynamicOverlay.maxAlpha : this.options.dynamicOverlay.minAlpha;
+            const initialAlpha = this.options.dynamicOverlay.lightMode ? this.options.dynamicOverlay.maxAlpha : this.options.dynamicOverlay.minAlpha;
             this._applyOverlayColor(`rgba(${this.options.dynamicOverlay.baseColorRGB.join(',')}, ${initialAlpha})`);
         }
 
@@ -160,14 +162,14 @@ class BlurredWindowBackground {
 
     _createBackgroundHostElement() {
         this.backgroundHostElement = document.createElement('div');
-        this.backgroundHostElement.id = `${this.runtimeEnv}-blurred-background-host`;
+        this.backgroundHostElement.id = `vel-blurred-background-host`;
         const s = this.backgroundHostElement.style;
         s.position = 'fixed';
         s.top = '5px';
         s.left = '5px';
         s.right = '5px';
         s.bottom = '5px';
-        s.borderRadius = "15px";
+        s.borderRadius = `${this.options.borderRadius}px`;
         s.boxShadow = "0 0 5px rgba(0, 0, 0, .5)";
         s.overflow = 'hidden';
         s.zIndex = this.options.elementZIndex;
@@ -178,7 +180,7 @@ class BlurredWindowBackground {
     _createOverlayElement() {
         if (!this.backgroundHostElement) return;
         this.overlayElement = document.createElement('div');
-        this.overlayElement.id = `${this.runtimeEnv}-blurred-background-overlay`;
+        this.overlayElement.id = `vel-blurred-background-overlay`;
         const s = this.overlayElement.style;
         s.position = 'absolute'; s.top = '0'; s.left = '0'; s.width = '100%'; s.height = '100%';
         s.pointerEvents = 'none';
@@ -299,20 +301,20 @@ class BlurredWindowBackground {
                             const imgSrc = (this.tempDir && fs.existsSync(this.blurredImagePath)) ? this.blurredImagePath : blurredBlobInstance.blob;
                             const avgBrightness = await this._getAverageBrightnessFromBlurredImage(imgSrc);
                             if (typeof avgBrightness === 'number') {
-                                const { baseColorRGB, minAlpha, maxAlpha, brightnessThresholdLow, brightnessThresholdHigh, invertAlphaBehavior } = this.options.dynamicOverlay;
+                                const { baseColorRGB, minAlpha, maxAlpha, brightnessThresholdLow, brightnessThresholdHigh, lightMode } = this.options.dynamicOverlay;
                                 let alpha;
-                                if (avgBrightness <= brightnessThresholdLow) alpha = invertAlphaBehavior ? maxAlpha : minAlpha;
-                                else if (avgBrightness >= brightnessThresholdHigh) alpha = invertAlphaBehavior ? minAlpha : maxAlpha;
+                                if (avgBrightness <= brightnessThresholdLow) alpha = lightMode ? maxAlpha : minAlpha;
+                                else if (avgBrightness >= brightnessThresholdHigh) alpha = lightMode ? minAlpha : maxAlpha;
                                 else {
                                     const ratio = (avgBrightness - brightnessThresholdLow) / (brightnessThresholdHigh - brightnessThresholdLow);
-                                    alpha = invertAlphaBehavior ? maxAlpha - (maxAlpha - minAlpha) * ratio : minAlpha + (maxAlpha - minAlpha) * ratio;
+                                    alpha = lightMode ? maxAlpha - (maxAlpha - minAlpha) * ratio : minAlpha + (maxAlpha - minAlpha) * ratio;
                                 }
                                 alpha = Math.max(minAlpha, Math.min(maxAlpha, alpha));
                                 this._applyOverlayColor(`rgba(${baseColorRGB.join(',')}, ${alpha.toFixed(3)})`);
                             }
                         } catch (brightnessError) {
                             console.warn("計算圖像平均亮度失敗:", brightnessError);
-                            const fallbackAlpha = this.options.dynamicOverlay.invertAlphaBehavior ? this.options.dynamicOverlay.maxAlpha : this.options.dynamicOverlay.minAlpha;
+                            const fallbackAlpha = this.options.dynamicOverlay.lightMode ? this.options.dynamicOverlay.maxAlpha : this.options.dynamicOverlay.minAlpha;
                             this._applyOverlayColor(`rgba(${this.options.dynamicOverlay.baseColorRGB.join(',')}, ${fallbackAlpha})`);
                         }
                     }
