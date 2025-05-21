@@ -1,0 +1,2 @@
+# BlurredWindowBackground
+一個適用於nwjs和electron的窗口背景靜態模糊類
