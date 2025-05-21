@@ -13,7 +13,7 @@ body {
 <a id="static-blur">[1]</a> 靜態模糊：靜態模糊是指針對靜態壁紙的模糊，而不是針對窗口背後元素的即時模糊。
 
 > 事實上目前只有MacOs具備真正完美的動態模糊，在Windows 11上它的模糊其實也是靜態模糊。而在Linux上，Gnome本身沒有模糊效果，KDE的內建模糊和Gnome的Blur My Shell擴展的模糊都有一個巨大的缺陷，那就是它不匹配窗口的圓角，會存在直角的模糊區域。而nwjs的透明窗口本身就存在嚴重BUG（在Linux with gnome上），配上Blur My Shell更是災難！
-> 
+
 BlurredWindowBackground 提供的背景具有以下特點：
 
 - **圓角**：默認15px。你當然可以自定義這個圓角來匹配你的設計風格。
