@@ -20,7 +20,8 @@ BlurredWindowBackground 提供的背景具有以下特點：
 - **預留的邊距**：距離真實窗口邊框有5px的間距，這是因為必須保留出陰影顯示的空間，如果沒有間距，陰影將會消失。最大化時將會取消邊距。
 - **窗口陰影**：處理一個5px的陰影，這是硬編碼，目前不會開放參數去修改。最大化時將會取消陰影效果。
 - **模糊背景**：通過獲取當前桌布預生成模糊的背景圖片，不是即時計算模糊，因此具有較好的性能，當桌布發生變化時，將會自動重新捕獲並生成新的模糊背景。
-- **動態遮罩**：添加了一個初級的動態遮障，根據桌布的亮度，動態調整遮罩的透明度。淺色和深色的閾值，遮罩的顏色，以及透明度的範圍都可以通過參數指定。
+    - 建議根據模糊程度、遮障透明度調整`options.imageProcessingZipRate`，當圖片被縮放到較小尺寸，如果模糊程度較低和/或遮罩透明度過高，可能會出現低分辨率的色塊等現象。
+- **動態遮罩**：添加了一個動態遮障，根據窗口背景桌布的亮度，動態調整遮罩的透明度。淺色和深色的閾值，遮罩的顏色，以及透明度的範圍都可以通過參數指定。
     - 當更換到深色遮罩時，記得將lightMode設為False。
     - 動態遮罩並不會動態更改文字等內容的默認顏色，當你更改為深色的遮罩時，不僅需要更改lightMode，同時也需要自行更改內容的顏色來避免「低可讀性」的設計失誤。
 
@@ -41,23 +42,18 @@ BlurredWindowBackground 提供的背景具有以下特點：
 
 ```javascript
 // 僅為簡化示例，請根據你的實際腳本調整
-const { app, BrowserWindow, ipcMain } = require('electron');
-const path = require('path');
+// ... 其他代碼
 const { setupBlurredWindowBackgroundIPC } = require('./bwb-electron-ipc-setup.js'); // 假設文件在同級目錄
 
 let mainWindow;
 
-app.commandLine.appendSwitch('gtk-version', '3'); //防止gnome40+報錯
-
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
+        // ... 其他設定
         transparent: true, // <--- 啟用透明窗口
         frame: false,      // <--- 移除窗口邊框和標題欄
-        show: true,
         webPreferences: {
-            nodeIntegration: true,
+            nodeIntegration: true, // <--- 啟用node支援
             contextIsolation: false, // 為了簡化示例；生產環境建議使用 true 和 preload.js
             // preload: path.join(__dirname, 'preload.js') // 使用 preload 腳本更安全
         }
@@ -65,29 +61,13 @@ function createWindow() {
 
     mainWindow.loadFile('src/index.html');
 
-    // ------------ BWB IPC 設置 (一行核心指令) ------------
+    // ------------ BWB IPC 設置 (核心指令) -----------------
     setupBlurredWindowBackgroundIPC(ipcMain, mainWindow);
     // ----------------------------------------------------
 
-    mainWindow.on('closed', () => {
-        mainWindow = null;
-    });
+    // ... 其他代碼
 }
-
-app.whenReady().then(() => {
-    createWindow();
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
-        }
-    });
-});
-
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
+// ... 其他代碼
 ```
 
 3. 在你窗口的HTML檔案中以**普通腳本**的方式引入 `BlurredWindowBackground.js` 即：
