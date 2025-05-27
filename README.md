@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
 ## 參數說明
 - `options` (Object): 配置選項物件。
     - `borderRadius` (Number, 可選, 默認: `15`): 背景在窗口化模式下的圓角半徑（單位：像素）。
-    - `blurRadius` (Number, 可選, 默認: `90`): 背景圖像的模糊半徑（最終質量，單位：像素）。
+    - `blurRadius` (Number, 可選, 默認: `60`): 背景圖像的模糊半徑（最終質量，單位：像素）。
     - `previewBlurRadius` (Number, 可選, 默認: `90`): 預覽圖像的模糊半徑（單位：像素）。
     - `previewQualityFactor` (Number, 可選, 默認: `0.1`): 預覽圖像的質量/壓縮因子（範圍：0.01-1.0）。影響預覽圖生成速度和大小。
     - `titleBarHeight` (Number, 可選, 默認: `0`): 窗口頂部標題欄或自定義拖拽區域的高度（單位：像素），用於調整背景的垂直偏移。
