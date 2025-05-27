@@ -10,9 +10,15 @@ body {
     background: transparent;
 }
 ```
-<a id="static-blur">[1]</a> 靜態模糊：靜態模糊是指針對靜態壁紙的模糊，而不是針對窗口背後元素的即時模糊。
+
+<a id="static-blur">[1]</a> 靜態模糊：靜態模糊是指針對靜態桌布的模糊，而不是針對窗口背後元素的即時模糊，靜態毛玻璃並不具備真正的透明度。靜態模糊通過將模糊後的桌布圖片和桌布對齊，造成半透明的視覺錯覺，但不是真正具備透明度和即時模糊計算，因此更加節省圖形計算資源。
+
 
 > 事實上目前只有MacOs具備真正完美的動態模糊，在Windows 11上它的模糊其實也是靜態模糊。而在Linux上，Gnome本身沒有模糊效果，KDE的內建模糊和Gnome的Blur My Shell擴展的模糊都有一個巨大的缺陷，那就是它不匹配窗口的圓角，會存在直角的模糊區域。而nwjs的透明窗口本身就存在嚴重BUG（在Linux with gnome上），配上Blur My Shell更是災難！
+
+
+> **為什麼不做動態模糊？** 因為動態模糊是一個和窗口合成器深度相關的功能，它必須在窗口合成器中實現，因為只有在合成器中獲取的才是分層的，之後合成器輸出的是合併後的圖像，窗口自身無法把自己分離出來，自然無法獲取到其背後的內容，也就無法實現模糊計算了。另一方面，javascript的計算效率較低，要達到16.67ms（60fps的幀間隔）計算一張圖片是不可能做到的。
+
 
 BlurredWindowBackground 提供的背景具有以下特點：
 
@@ -50,7 +56,7 @@ let mainWindow;
 function createWindow() {
     mainWindow = new BrowserWindow({
         // ... 其他設定
-        transparent: true, // <--- 啟用透明窗口
+        transparent: true, // <--- （可選）將窗口設定為**無邊框的透明窗口**，如果你不需要圓角，或者使用默認的窗口邊框，則可以不使用透明窗口。
         frame: false,      // <--- 移除窗口邊框和標題欄
         webPreferences: {
             nodeIntegration: true, // <--- 啟用node支援
@@ -70,15 +76,12 @@ function createWindow() {
 // ... 其他代碼
 ```
 
-3. 在你窗口的HTML檔案中以**普通腳本**的方式引入 `BlurredWindowBackground.js` 即：
+3. 在你窗口的HTML檔案中以**CommonJS**的方式引入 `BlurredWindowBackground.js` 即：
 
-```html
-<script src="./BlurredWindowBackground.js"></script>
+```Javascript
+// 假設你的頁面腳本和BWB腳本在同一目錄。
+const BlurredWindowBackground = require('./BlurredWindowBackground.js');
 ```
-
-
-> 注：由於某些未知原因，當使用CommonJS或ES Module方式引入時，它不會工作，必須使用傳統方式直接引入
-
 
 4. 在你頁面的腳本中使用以下代碼調用：
 
@@ -95,7 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
 ```html
 <body>
     <div id="contents">
+        <!-- 標題列 -->
         <div id="title">模糊窗口</div>
+        <!-- 關閉按鈕 -->
         <div id="close" class="btl">
             <svg viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -104,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     style="paint-order:stroke fill markers" />
             </svg>
         </div>
+        <!--其它內容-->
     </div>
 </body>
 ```
@@ -179,15 +185,12 @@ body {
 
 1. 將`BlurredWindowBackground.js` `ImageBlurProcessor.js` `wallpaper.js` 放在同一目錄下
 
-2. 在你窗口的HTML檔案中以**普通腳本**的方式引入 `BlurredWindowBackground.js` 即：
+2. 在你窗口的HTML檔案中以**CommonJS**的方式引入 `BlurredWindowBackground.js` 即：
 
-```html
-<script src="./BlurredWindowBackground.js"></script>
+```Javascript
+// 假設你的頁面腳本和BWB腳本在同一目錄。
+const BlurredWindowBackground = require('./BlurredWindowBackground.js');
 ```
-
-
-> 注：由於某些未知原因，當使用CommonJS或ES Module方式引入時，它不會工作，必須使用傳統方式直接引入
-
 
 3. 在你頁面的腳本中使用以下代碼調用：
 
@@ -202,25 +205,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
 4. 同Electron部分第5條
 
-5. 確保將窗口設定為**無邊框的透明窗口**
+5. （可選）將窗口設定為**無邊框的透明窗口**，如果你不需要圓角，或者使用默認的窗口邊框，則可以不使用透明窗口。
 
 ## 參數說明
--   `options`: `object` - 配置選項。
-    -   `borderRadius`: `number` (默認：`15`) - 背景的圓角半徑。
-    -   `blurRadius`: `number` (默認: `90`) - 背景圖像的模糊半徑，和CSS中的blur一致，採用px為單位，而不是sigma。
-    -   `titleBarHeight`: `number` (默認: `0`) - 窗口頂部標題欄或偏移的高度，不包括系統的標準標題欄，這裡是針對你自定義的不透明標題欄的設定，**但強烈建議標題欄包含在背景範圍內，無論是否透明**。
-    -   `checkIntervalSuccess`: `number` (默認: `1000`) - 桌布檢查成功時的更新間隔 (毫秒)。
-    -   `checkIntervalError`: `number` (默認: `1000`) - 桌布檢查失敗時的重試間隔 (毫秒)。
-    -   `imageProcessingZipRate`: `number` (默認: `0.25`) - 圖像處理比例，範圍是0.01-1.00，越小處理速度越快，但同時畫面質量越低，建議模糊程度越高，壓縮比例越低。0.25就代表圖片將以1/4的大小參與模糊計算。
-    -   `elementZIndex`: `string` (默認: `'0'`) - 背景元素的 z-index。
-    -   `dynamicOverlay`: `object` - 動態遮罩配置。
-        -   `enable`: `boolean` (默認: `true`) - 是否啟用動態透明度遮罩。
-        -   `baseColorRGB`: `Array<number>` (默認: `[252,252,252]`) - 遮罩的基礎 RGB 顏色。
-        -   `minAlpha`: `number` (默認: `0.5`) - 最小透明度 (0.0 - 1.0)。
-        -   `maxAlpha`: `number` (默認: `0.75`) - 最大透明度 (0.0 - 1.0)。
-        -   `brightnessThresholdLow`: `number` (默認: `70`) - 平均亮度的低閾值。
-        -   `brightnessThresholdHigh`: `number` (默認: `180`) - 平均亮度的高閾值。
-        -   `lightMode`: `boolean` (默認: `true`) - 遮罩色是否為淺色（即主體內容，比如文字等為深色）。
+- `options` (Object): 配置選項物件。
+    - `borderRadius` (Number, 可選, 默認: `15`): 背景在窗口化模式下的圓角半徑（單位：像素）。
+    - `blurRadius` (Number, 可選, 默認: `90`): 背景圖像的模糊半徑（最終質量，單位：像素）。
+    - `previewBlurRadius` (Number, 可選, 默認: `90`): 預覽圖像的模糊半徑（單位：像素）。
+    - `previewQualityFactor` (Number, 可選, 默認: `0.1`): 預覽圖像的質量/壓縮因子（範圍：0.01-1.0）。影響預覽圖生成速度和大小。
+    - `titleBarHeight` (Number, 可選, 默認: `0`): 窗口頂部標題欄或自定義拖拽區域的高度（單位：像素），用於調整背景的垂直偏移。
+    - `checkIntervalSuccess` (Number, 可選, 默認: `1000`): 壁紙路徑檢查成功時，下一次檢查的間隔時間（單位：毫秒）。
+    - `checkIntervalError` (Number, 可選, 默認: `5000`): 壁紙路徑檢查失敗時，下一次重試的間隔時間（單位：毫秒）。
+    - `imageProcessingZipRate` (Number, 可選, 默認: `0.25`): 最終質量圖像在處理前的內部縮放比例（範圍：0.01-1.00）。較小的值可以加快模糊處理速度，但可能影響細節。
+    - `elementZIndex` (String, 可選, 默認: `'-1'`): 背景視口元素的 CSS `z-index` 值。建議為負值以使其位於應用程式內容之下。
+    - `backgroundTransitionDuration` (Number, 可選, 默認: `500`): 背景圖片切換時的 CSS 過渡動畫持續時間（單位：毫秒）。
+    - `dynamicOverlay` (Object, 可選): 動態遮罩層的配置。
+        - `enable` (Boolean, 可選, 默認: `true`): 是否啟用動態透明度遮罩層。
+        - `baseColorRGB` (Array<Number>, 可選, 默認: `[252, 252, 252]`): 遮罩層的基礎 RGB 顏色值數組，例如 `[255, 255, 255]` 代表白色。
+        - `minAlpha` (Number, 可選, 默認: `0.5`): 遮罩層的最小透明度（範圍：0.0 - 1.0）。
+        - `maxAlpha` (Number, 可選, 默認: `0.75`): 遮罩層的最大透明度（範圍：0.0 - 1.0）。
+        - `brightnessThresholdLow` (Number, 可選, 默認: `70`): 背景圖像區域亮度判定的低閾值（範圍：0-255）。當亮度低於此值時，遮罩透明度趨向一端。
+        - `brightnessThresholdHigh` (Number, 可選, 默認: `180`): 背景圖像區域亮度判定的高閾值（範圍：0-255）。當亮度高於此值時，遮罩透明度趨向另一端。
+        - `lightMode` (Boolean, 可選, 默認: `true`): 遮罩顏色模式。如果為 `true`（淺色模式），則背景亮時遮罩更透明，背景暗時遮罩更不透明。如果為 `false`（深色模式），則相反。
     
 ## 補充說明
 
@@ -234,3 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
 | **部署與使用** | 需要建構 (Build) 才方便使用，否則用戶需自行安裝 npm 環境並使用 `npm start` 來啟動。 | 無需額外工作，可執行檔案可直接和源代碼放在一起。                                   |
 
 推薦使用Electron，因為它雖然比較麻煩，但是沒有BUG並且具有更好的效能。不過我也將綁定IPC的額外工作打包了，實際上並不會比nwjs麻煩多少。
+
+### 兼容性
+
+僅在最新版本的Electron上進行了最終測試，部分技術可能不兼容過舊的版本。例如css的inset屬性在2020年的版本之後才被廣泛支援（Chrome 87開始支援），因此如果nwjs或electron使用的版本低於這個版本，則會導致背景無法顯示。
