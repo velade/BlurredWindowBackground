@@ -1,15 +1,16 @@
 // bwb-electron-ipc-setup.js
 // 這個模塊應該在 Electron 的主進程中使用
 
-const { app, screen } = require('electron'); // 引入 screen 模塊
+const { app, screen, nativeTheme, ipcMain: electronIpcMain } = require('electron'); // 引入 nativeTheme
 
 /**
  * 為 BlurredWindowBackground 設置必要的 IPC 監聽器、處理程序，並自動綁定窗口事件。
- * @param {import('electron').IpcMain} ipcMain - Electron 的 ipcMain 模塊。
+ * @param {import('electron').IpcMain} ipcMainParam - Electron 的 ipcMain 模塊。
  * @param {import('electron').BrowserWindow | () => import('electron').BrowserWindow | null} windowOrThunk - 要應用模糊背景效果的主 BrowserWindow 實例，或一個返回該實例的函數。
  */
-function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
-    if (!ipcMain) {
+function setupBlurredWindowBackgroundIPC(ipcMainParam, windowOrThunk) {
+    const ipcMainToUse = ipcMainParam || electronIpcMain; // 如果未傳入，則使用全局的
+    if (!ipcMainToUse) {
         console.error('[BWB IPC Setup] ipcMain 參數是必需的。');
         return;
     }
@@ -48,17 +49,26 @@ function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
         return false;
     };
 
+    // 新增：獲取系統主題的 handler
+    const handleGetSystemThemeIsDark = async (event) => {
+        if (nativeTheme) {
+            return nativeTheme.shouldUseDarkColors;
+        }
+        console.warn('[BWB IPC Setup] nativeTheme module not available, cannot get system theme.');
+        return false; // 回落值
+    };
+
     // --- IPC 監聽器設置 ---
 
-    ipcMain.on('bwb:get-app-name', (event) => {
+    ipcMainToUse.on('bwb:get-app-name', (event) => {
         event.returnValue = app.getName() || 'DefaultElectronApp';
     });
 
-    ipcMain.on('bwb:get-app-path', (event) => {
+    ipcMainToUse.on('bwb:get-app-path', (event) => {
         event.returnValue = app.getAppPath();
     });
 
-    ipcMain.on('bwb:get-path', (event, pathName) => {
+    ipcMainToUse.on('bwb:get-path', (event, pathName) => {
         try {
             event.returnValue = app.getPath(pathName);
         } catch (error) {
@@ -67,9 +77,9 @@ function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
         }
     });
 
-    ipcMain.handle('bwb:get-window-bounds', handleGetWindowBounds);
+    ipcMainToUse.handle('bwb:get-window-bounds', handleGetWindowBounds);
 
-    ipcMain.on('bwb:get-window-bounds-sync', (event) => {
+    ipcMainToUse.on('bwb:get-window-bounds-sync', (event) => {
         const mainWindow = getMainWindow();
         if (mainWindow && !mainWindow.isDestroyed()) {
             event.returnValue = mainWindow.getBounds();
@@ -79,8 +89,9 @@ function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
         }
     });
 
-    ipcMain.handle('bwb:get-window-is-maximized', handleGetWindowIsMaximized);
-    ipcMain.handle('bwb:get-window-is-fullscreen', handleGetWindowIsFullscreen);
+    ipcMainToUse.handle('bwb:get-window-is-maximized', handleGetWindowIsMaximized);
+    ipcMainToUse.handle('bwb:get-window-is-fullscreen', handleGetWindowIsFullscreen);
+    ipcMainToUse.handle('bwb:get-system-theme-is-dark', handleGetSystemThemeIsDark); // 新增 handler
 
 
     // --- 窗口和屏幕事件綁定 ---
@@ -90,7 +101,8 @@ function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
     // 定義事件處理器以便能正確移除
     let onMoveHandler, onResizeHandler, onMaximizeHandler, onUnmaximizeHandler,
         onEnterFullScreenHandler, onLeaveFullScreenHandler,
-        onDisplayMetricsChangedHandler;
+        onDisplayMetricsChangedHandler,
+        onNativeThemeUpdatedHandler; // 新增 nativeTheme 監聽器
 
     if (mainWindowInstance && !mainWindowInstance.isDestroyed()) {
         const sendToRenderer = (channel, ...args) => {
@@ -135,7 +147,6 @@ function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
             sendToRenderer('bwb:display-metrics-changed');
         };
 
-        // 檢查 screen 是否可用 (例如在某些測試環境中可能沒有)
         if (screen) {
             screen.on('display-metrics-changed', onDisplayMetricsChangedHandler);
             screen.on('display-added', onDisplayMetricsChangedHandler);
@@ -144,12 +155,23 @@ function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
             console.warn('[BWB IPC Setup] Electron screen module not available. Display metrics changes will not be monitored.');
         }
 
+        // 新增：監聽系統主題變化並通知渲染進程
+        if (nativeTheme) {
+            onNativeThemeUpdatedHandler = () => {
+                // console.log('[BWB IPC Setup] Native theme updated. Notifying renderer.');
+                sendToRenderer('bwb:system-theme-changed', nativeTheme.shouldUseDarkColors);
+            };
+            nativeTheme.on('updated', onNativeThemeUpdatedHandler);
+        } else {
+            console.warn('[BWB IPC Setup] Electron nativeTheme module not available. System theme changes will not be monitored for renderer.');
+        }
+
 
         const sendInitialData = () => {
             const win = getMainWindow();
             if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
                 sendBoundsToRenderer(); // 發送初始bounds
-                // 渲染器會通過 invoke 查詢初始最大化和全螢幕狀態
+                // 渲染器會通過 invoke 查詢初始最大化、全螢幕狀態和系統主題
             }
         };
 
@@ -165,13 +187,13 @@ function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
 
         mainWindowInstance.once('closed', () => {
             const win = getMainWindow(); // 獲取當前 mainWindowInstance 的引用
-            if (win && typeof win.removeListener === 'function') {
-                if (onMoveHandler) win.removeListener('move', onMoveHandler);
-                if (onResizeHandler) win.removeListener('resize', onResizeHandler);
-                if (onMaximizeHandler) win.removeListener('maximize', onMaximizeHandler);
-                if (onUnmaximizeHandler) win.removeListener('unmaximize', onUnmaximizeHandler);
-                if (onEnterFullScreenHandler) win.removeListener('enter-full-screen', onEnterFullScreenHandler);
-                if (onLeaveFullScreenHandler) win.removeListener('leave-full-screen', onLeaveFullScreenHandler);
+            if (win && typeof win.removeListener === 'function') { // 應該用 mainWindowInstance
+                if (onMoveHandler) mainWindowInstance.removeListener('move', onMoveHandler);
+                if (onResizeHandler) mainWindowInstance.removeListener('resize', onResizeHandler);
+                if (onMaximizeHandler) mainWindowInstance.removeListener('maximize', onMaximizeHandler);
+                if (onUnmaximizeHandler) mainWindowInstance.removeListener('unmaximize', onUnmaximizeHandler);
+                if (onEnterFullScreenHandler) mainWindowInstance.removeListener('enter-full-screen', onEnterFullScreenHandler);
+                if (onLeaveFullScreenHandler) mainWindowInstance.removeListener('leave-full-screen', onLeaveFullScreenHandler);
                 console.log('[BWB IPC Setup] 已從已關閉窗口移除窗口事件監聽器。');
             }
 
@@ -182,25 +204,26 @@ function setupBlurredWindowBackgroundIPC(ipcMain, windowOrThunk) {
                 console.log('[BWB IPC Setup] 已移除屏幕事件監聽器。');
             }
 
+            // 新增：移除 nativeTheme 監聽器
+            if (nativeTheme && onNativeThemeUpdatedHandler) {
+                nativeTheme.removeListener('updated', onNativeThemeUpdatedHandler);
+                console.log('[BWB IPC Setup] 已移除 nativeTheme updated 監聽器。');
+            }
+
             // 清理所有 handle
-            ipcMain.removeHandler('bwb:get-window-bounds');
-            ipcMain.removeHandler('bwb:get-window-is-maximized');
-            ipcMain.removeHandler('bwb:get-window-is-fullscreen');
-            // ipcMain.on 的監聽器通常是全局的，除非設計為每個窗口實例創建和銷毀。
-            // 'bwb:get-app-name', 'bwb:get-app-path', 'bwb:get-path', 'bwb:get-window-bounds-sync'
-            // 在此假設它們是全局的，不需要在此處移除。如果需要，應使用 ipcMain.removeListener。
+            ipcMainToUse.removeHandler('bwb:get-window-bounds');
+            ipcMainToUse.removeHandler('bwb:get-window-is-maximized');
+            ipcMainToUse.removeHandler('bwb:get-window-is-fullscreen');
+            ipcMainToUse.removeHandler('bwb:get-system-theme-is-dark'); // 新增 handler 的清理
             console.log('[BWB IPC Setup] 已清理 IPC handlers。');
         });
 
-        console.log('[BWB IPC Setup] BlurredWindowBackground 的 IPC 通道和窗口/屏幕事件監聽器已成功設置。');
+        console.log('[BWB IPC Setup] BlurredWindowBackground 的 IPC 通道和窗口/屏幕/主題事件監聽器已成功設置。');
 
     } else if (typeof windowOrThunk !== 'function') {
         console.warn('[BWB IPC Setup] 傳入的 mainWindow 實例無效或已銷毀，無法綁定事件。');
     } else {
         console.log('[BWB IPC Setup] 以函數形式傳入 mainWindow。事件將在觸發時嘗試獲取窗口。');
-        // 注意：如果以函數形式傳入，窗口關閉時的清理邏輯可能需要外部協調，
-        // 因為此 setup 函數本身無法知道何時該移除全局 screen 監聽器或 IPC handlers。
-        // 當前 'closed' 事件的清理是基於初始獲取的 mainWindowInstance。
     }
 }
 
